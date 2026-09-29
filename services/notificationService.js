@@ -74,6 +74,7 @@ const sendWhatsAppTemplate = async ({
     WHATSAPP_PHONE_NUMBER_ID,
     WHATSAPP_TEMPLATE_NAME,
     WHATSAPP_TEMPLATE_LANGUAGE = "en",
+    WHATSAPP_GRAPH_VERSION = "v22.0",
   } = process.env;
 
   if (
@@ -85,7 +86,7 @@ const sendWhatsAppTemplate = async ({
   }
 
   const response = await fetch(
-    `https://graph.facebook.com/v22.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    `https://graph.facebook.com/${WHATSAPP_GRAPH_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
     {
       method: "POST",
       headers: {
