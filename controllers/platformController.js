@@ -19,19 +19,41 @@ const ensureDefaults = async () => {
   }
 };
 
+const validateAllocations = (allocations = []) => {
+  const cleaned = allocations
+    .filter((item) => item.user && Number(item.percentage) > 0)
+    .map((item) => ({
+      user: item.user,
+      percentage: Number(item.percentage),
+    }));
+
+  const total = cleaned.reduce((sum, item) => sum + item.percentage, 0);
+
+  if (total > 100.001) {
+    const error = new Error("Default team allocation cannot exceed 100%");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return cleaned;
+};
+
 const getPlatforms = async (req, res) => {
   try {
     await ensureDefaults();
-    const platforms = await Platform.find({ isActive: true }).sort({ name: 1 });
+    const platforms = await Platform.find({ isActive: true })
+      .populate("defaultAllocations.user", "name email designation role")
+      .sort({ name: 1 });
+
     res.status(200).json({ count: platforms.length, platforms });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 };
 
 const createPlatform = async (req, res) => {
   try {
-    const { name, slug, description, isActive } = req.body;
+    const { name, slug, description, isActive, defaultAllocations } = req.body;
     if (!name) return res.status(400).json({ message: "Platform name is required" });
 
     const finalSlug = (slug || name)
@@ -45,24 +67,36 @@ const createPlatform = async (req, res) => {
       slug: finalSlug,
       description,
       isActive,
+      defaultAllocations: validateAllocations(defaultAllocations),
     });
 
-    res.status(201).json({ message: "Platform created successfully", platform });
+    const populated = await Platform.findById(platform._id)
+      .populate("defaultAllocations.user", "name email designation role");
+
+    res.status(201).json({ message: "Platform created successfully", platform: populated });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 };
 
 const updatePlatform = async (req, res) => {
   try {
-    const platform = await Platform.findByIdAndUpdate(req.params.id, req.body, {
+    const update = { ...req.body };
+
+    if (Object.prototype.hasOwnProperty.call(update, "defaultAllocations")) {
+      update.defaultAllocations = validateAllocations(update.defaultAllocations);
+    }
+
+    const platform = await Platform.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
-    });
+    }).populate("defaultAllocations.user", "name email designation role");
+
     if (!platform) return res.status(404).json({ message: "Platform not found" });
+
     res.status(200).json({ message: "Platform updated successfully", platform });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 };
 
