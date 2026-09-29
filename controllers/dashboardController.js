@@ -7,6 +7,7 @@ const Lead = require("../models/Lead");
 const getDashboardStats = async (req, res) => {
   try {
     const isSuperAdmin = req.user?.role === "super_admin";
+    const canViewLeads = ["super_admin", "admin", "manager"].includes(req.user?.role);
 
     const [
       totalClients,
@@ -43,30 +44,38 @@ const getDashboardStats = async (req, res) => {
             ? "title status budget client platform createdAt"
             : "title status client platform createdAt"
         ),
-      Lead.countDocuments({ stage: { $nin: ["Won", "Lost"] } }),
-      Lead.countDocuments({
-        stage: { $nin: ["Won", "Lost"] },
-        nextFollowUp: {
-          $gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          $lt: new Date(new Date().setHours(24, 0, 0, 0)),
-        },
-      }),
-      Lead.countDocuments({
-        stage: { $nin: ["Won", "Lost"] },
-        nextFollowUp: {
-          $lt: new Date(new Date().setHours(0, 0, 0, 0)),
-        },
-      }),
-      Lead.find({ stage: { $nin: ["Won", "Lost"] } })
-        .populate("platform", "name")
-        .populate("owner", "name")
-        .sort({ nextFollowUp: 1, createdAt: -1 })
-        .limit(5)
-        .select(
-          isSuperAdmin
-            ? "name company stage estimatedValue probability nextFollowUp platform owner createdAt"
-            : "name company stage probability nextFollowUp platform owner createdAt"
-        ),
+      canViewLeads
+        ? Lead.countDocuments({ stage: { $nin: ["Won", "Lost"] } })
+        : Promise.resolve(0),
+      canViewLeads
+        ? Lead.countDocuments({
+            stage: { $nin: ["Won", "Lost"] },
+            nextFollowUp: {
+              $gte: new Date(new Date().setHours(0, 0, 0, 0)),
+              $lt: new Date(new Date().setHours(24, 0, 0, 0)),
+            },
+          })
+        : Promise.resolve(0),
+      canViewLeads
+        ? Lead.countDocuments({
+            stage: { $nin: ["Won", "Lost"] },
+            nextFollowUp: {
+              $lt: new Date(new Date().setHours(0, 0, 0, 0)),
+            },
+          })
+        : Promise.resolve(0),
+      canViewLeads
+        ? Lead.find({ stage: { $nin: ["Won", "Lost"] } })
+            .populate("platform", "name")
+            .populate("owner", "name")
+            .sort({ nextFollowUp: 1, createdAt: -1 })
+            .limit(5)
+            .select(
+              isSuperAdmin
+                ? "name company stage estimatedValue probability nextFollowUp platform owner createdAt"
+                : "name company stage probability nextFollowUp platform owner createdAt"
+            )
+        : Promise.resolve([]),
     ]);
 
     const base = {
