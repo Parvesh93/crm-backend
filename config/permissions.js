@@ -15,6 +15,8 @@ const rolePermissions = {
     "view_dashboard",
     "view_platforms",
     "manage_platforms",
+    "view_earnings",
+    "manage_payments",
   ],
 
   admin: [
@@ -33,6 +35,8 @@ const rolePermissions = {
     "view_dashboard",
     "view_platforms",
     "manage_platforms",
+    "view_earnings",
+    "manage_payments",
   ],
 
   manager: [
@@ -46,6 +50,7 @@ const rolePermissions = {
     "generate_ai",
     "view_dashboard",
     "view_platforms",
+    "view_earnings",
   ],
 
   developer: [
