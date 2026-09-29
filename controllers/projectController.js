@@ -12,6 +12,8 @@ const createProject = async (req, res) => {
       budget,
       startDate,
       deadline,
+      paymentDueDate,
+      paymentTerms,
       status,
       notes,
     } = req.body;
@@ -32,6 +34,8 @@ const createProject = async (req, res) => {
       budget,
       startDate,
       deadline,
+      paymentDueDate,
+      paymentTerms,
       status,
       notes,
       createdBy: req.user._id,
