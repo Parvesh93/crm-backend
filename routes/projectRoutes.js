@@ -9,20 +9,15 @@ const {
   deleteProject,
 } = require("../controllers/projectController");
 
-const { protect, authorizeRoles } = require("../middleware/authMiddleware");
+const { protect, authorizePermission } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-router.post("/", protect, authorizeRoles("admin", "team"), createProject);
-
-router.get("/", protect, getProjects);
-
-router.get("/client/:clientId", protect, getProjectsByClient);
-
-router.get("/:id", protect, getProjectById);
-
-router.put("/:id", protect, authorizeRoles("admin", "team"), updateProject);
-
-router.delete("/:id", protect, authorizeRoles("admin"), deleteProject);
+router.post("/", protect, authorizePermission("manage_projects"), createProject);
+router.get("/", protect, authorizePermission("view_projects"), getProjects);
+router.get("/client/:clientId", protect, authorizePermission("view_projects"), getProjectsByClient);
+router.get("/:id", protect, authorizePermission("view_projects"), getProjectById);
+router.put("/:id", protect, authorizePermission("manage_projects"), updateProject);
+router.delete("/:id", protect, authorizePermission("delete_projects"), deleteProject);
 
 module.exports = router;
