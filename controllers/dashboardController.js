@@ -1,67 +1,50 @@
 const Client = require("../models/Client");
 const Project = require("../models/Project");
+const Payment = require("../models/Payment");
 
 const getDashboardStats = async (req, res) => {
   try {
-    // CLIENT STATS
-    const totalClients = await Client.countDocuments();
-
-    const activeClients = await Client.countDocuments({
-      status: "Active",
-    });
-
-    const leadClients = await Client.countDocuments({
-      status: "Lead",
-    });
-
-    const completedClients = await Client.countDocuments({
-      status: "Completed",
-    });
-
-    // PROJECT STATS
-    const totalProjects = await Project.countDocuments();
-
-    const activeProjects = await Project.countDocuments({
-      status: "In Progress",
-    });
-
-    const completedProjects = await Project.countDocuments({
-      status: "Completed",
-    });
-
-    // TOTAL REVENUE
-    const revenueData = await Project.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalRevenue: {
-            $sum: "$budget",
+    const [
+      totalClients,
+      activeClients,
+      leadClients,
+      completedClients,
+      totalProjects,
+      activeProjects,
+      completedProjects,
+      revenueData,
+    ] = await Promise.all([
+      Client.countDocuments(),
+      Client.countDocuments({ status: "Active" }),
+      Client.countDocuments({ status: "Lead" }),
+      Client.countDocuments({ status: "Completed" }),
+      Project.countDocuments(),
+      Project.countDocuments({ status: "In Progress" }),
+      Project.countDocuments({ status: "Completed" }),
+      Payment.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$amount" },
           },
         },
-      },
+      ]),
     ]);
 
-    const totalRevenue =
-      revenueData.length > 0
-        ? revenueData[0].totalRevenue
-        : 0;
+    const totalRevenue = revenueData.length > 0 ? revenueData[0].totalRevenue : 0;
 
     res.status(200).json({
       totalClients,
       activeClients,
       leadClients,
       completedClients,
-
       totalProjects,
       activeProjects,
       completedProjects,
-
       totalRevenue,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
 
