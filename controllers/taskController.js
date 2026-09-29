@@ -50,6 +50,81 @@ const createTask = async (req, res) => {
   }
 };
 
+
+const createTasksBulk = async (req, res) => {
+  try {
+    const {
+      project,
+      tasks,
+      priority = "Medium",
+      dueDate,
+      assignedTo,
+    } = req.body;
+
+    if (!project || !Array.isArray(tasks) || tasks.length === 0) {
+      return res.status(400).json({
+        message: "Project and at least one task are required",
+      });
+    }
+
+    const projectExists = await Project.findById(project);
+
+    if (!projectExists) {
+      return res.status(404).json({
+        message: "Project not found",
+      });
+    }
+
+    const cleanTasks = tasks
+      .map((task) => {
+        if (typeof task === "string") {
+          return { title: task.trim() };
+        }
+
+        return {
+          title: String(task.title || "").trim(),
+          description: task.description || "",
+        };
+      })
+      .filter((task) => task.title);
+
+    if (cleanTasks.length === 0) {
+      return res.status(400).json({
+        message: "Please add at least one valid task",
+      });
+    }
+
+    if (cleanTasks.length > 100) {
+      return res.status(400).json({
+        message: "You can create up to 100 tasks at one time",
+      });
+    }
+
+    const docs = cleanTasks.map((task) => ({
+      project,
+      title: task.title,
+      description: task.description,
+      priority,
+      status: "Pending",
+      dueDate: dueDate || undefined,
+      assignedTo: assignedTo || undefined,
+      createdBy: req.user._id,
+    }));
+
+    const createdTasks = await Task.insertMany(docs);
+
+    res.status(201).json({
+      message: `${createdTasks.length} tasks created successfully`,
+      count: createdTasks.length,
+      tasks: createdTasks,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
 // GET ALL TASKS
 const getTasks = async (req, res) => {
   try {
@@ -175,6 +250,7 @@ const deleteTask = async (req, res) => {
 
 module.exports = {
   createTask,
+  createTasksBulk,
   getTasks,
   getTaskById,
   getTasksByProject,
