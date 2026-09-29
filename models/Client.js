@@ -2,39 +2,32 @@ const mongoose = require("mongoose");
 
 const clientSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
+    company: { type: String, trim: true },
+    email: { type: String, required: true, trim: true, lowercase: true },
+    phone: { type: String, trim: true },
+    website: { type: String, trim: true },
 
-    company: {
-      type: String,
-      trim: true,
-    },
-
-    email: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-    },
-
-    phone: {
-      type: String,
-      trim: true,
-    },
-
-    website: {
-      type: String,
-      trim: true,
-    },
-
+    // Legacy field retained for existing records
     serviceType: {
       type: String,
       enum: ["Shopify", "WordPress", "WooCommerce", "Laravel", "Maintenance", "Other"],
       default: "Other",
     },
+
+    platforms: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Platform",
+      },
+    ],
+
+    teamMembers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
     status: {
       type: String,
@@ -42,9 +35,7 @@ const clientSchema = new mongoose.Schema(
       default: "Lead",
     },
 
-    notes: {
-      type: String,
-    },
+    notes: { type: String },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -52,9 +43,7 @@ const clientSchema = new mongoose.Schema(
       required: true,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Client", clientSchema);
