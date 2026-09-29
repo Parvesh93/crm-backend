@@ -1,6 +1,7 @@
 const rolePermissions = {
   super_admin: [
     "manage_users",
+    "view_users",
     "view_clients",
     "manage_clients",
     "delete_clients",
@@ -21,6 +22,7 @@ const rolePermissions = {
 
   admin: [
     "manage_users",
+    "view_users",
     "view_clients",
     "manage_clients",
     "delete_clients",
@@ -40,6 +42,7 @@ const rolePermissions = {
   ],
 
   manager: [
+    "view_users",
     "view_clients",
     "manage_clients",
     "view_projects",
