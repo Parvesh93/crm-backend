@@ -2,6 +2,8 @@ const Lead = require("../models/Lead");
 const Client = require("../models/Client");
 const Project = require("../models/Project");
 
+const isSuperAdmin = (req) => req.user?.role === "super_admin";
+
 const populateLead = (query) =>
   query
     .populate("platform", "name slug")
@@ -9,6 +11,28 @@ const populateLead = (query) =>
     .populate("createdBy", "name email")
     .populate("convertedClient", "name company email")
     .populate("convertedProject", "title status budget");
+
+const sanitizeLead = (lead, req) => {
+  if (!lead) return lead;
+
+  const data =
+    typeof lead.toObject === "function"
+      ? lead.toObject()
+      : { ...lead };
+
+  if (!isSuperAdmin(req)) {
+    delete data.estimatedValue;
+
+    if (data.convertedProject) {
+      delete data.convertedProject.budget;
+    }
+  }
+
+  return data;
+};
+
+const sanitizeLeads = (leads, req) =>
+  leads.map((lead) => sanitizeLead(lead, req));
 
 const createLead = async (req, res) => {
   try {
@@ -33,7 +57,7 @@ const createLead = async (req, res) => {
       return res.status(400).json({ message: "Lead name is required" });
     }
 
-    const lead = await Lead.create({
+    const leadData = {
       name,
       company,
       email,
@@ -43,16 +67,25 @@ const createLead = async (req, res) => {
       owner: owner || req.user._id,
       source,
       stage,
-      estimatedValue: Number(estimatedValue || 0),
       probability,
       nextFollowUp: nextFollowUp || undefined,
       lastContactedAt: lastContactedAt || undefined,
       notes,
       createdBy: req.user._id,
-    });
+    };
+
+    if (isSuperAdmin(req)) {
+      leadData.estimatedValue = Number(estimatedValue || 0);
+    }
+
+    const lead = await Lead.create(leadData);
 
     const populated = await populateLead(Lead.findById(lead._id));
-    res.status(201).json({ message: "Lead created successfully", lead: populated });
+
+    res.status(201).json({
+      message: "Lead created successfully",
+      lead: sanitizeLead(populated, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -61,6 +94,7 @@ const createLead = async (req, res) => {
 const getLeads = async (req, res) => {
   try {
     const filter = {};
+
     if (req.query.stage) filter.stage = req.query.stage;
     if (req.query.platform) filter.platform = req.query.platform;
     if (req.query.owner) filter.owner = req.query.owner;
@@ -69,7 +103,10 @@ const getLeads = async (req, res) => {
       Lead.find(filter).sort({ nextFollowUp: 1, createdAt: -1 })
     );
 
-    res.status(200).json({ count: leads.length, leads });
+    res.status(200).json({
+      count: leads.length,
+      leads: sanitizeLeads(leads, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -78,8 +115,14 @@ const getLeads = async (req, res) => {
 const getLeadById = async (req, res) => {
   try {
     const lead = await populateLead(Lead.findById(req.params.id));
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
-    res.status(200).json({ lead });
+
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+
+    res.status(200).json({
+      lead: sanitizeLead(lead, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -88,8 +131,13 @@ const getLeadById = async (req, res) => {
 const updateLead = async (req, res) => {
   try {
     const update = { ...req.body };
-    if (update.estimatedValue !== undefined) {
-      update.estimatedValue = Number(update.estimatedValue || 0);
+
+    if (isSuperAdmin(req)) {
+      if (update.estimatedValue !== undefined) {
+        update.estimatedValue = Number(update.estimatedValue || 0);
+      }
+    } else {
+      delete update.estimatedValue;
     }
 
     const lead = await populateLead(
@@ -99,9 +147,14 @@ const updateLead = async (req, res) => {
       })
     );
 
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
 
-    res.status(200).json({ message: "Lead updated successfully", lead });
+    res.status(200).json({
+      message: "Lead updated successfully",
+      lead: sanitizeLead(lead, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -110,9 +163,13 @@ const updateLead = async (req, res) => {
 const deleteLead = async (req, res) => {
   try {
     const lead = await Lead.findById(req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
 
     await lead.deleteOne();
+
     res.status(200).json({ message: "Lead deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -121,6 +178,30 @@ const deleteLead = async (req, res) => {
 
 const getPipelineSummary = async (req, res) => {
   try {
+    if (!isSuperAdmin(req)) {
+      const rows = await Lead.aggregate([
+        {
+          $group: {
+            _id: "$stage",
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const total = rows.reduce(
+        (acc, row) => {
+          acc.count += row.count;
+          return acc;
+        },
+        { count: 0 }
+      );
+
+      return res.status(200).json({
+        stages: rows,
+        total,
+      });
+    }
+
     const rows = await Lead.aggregate([
       {
         $group: {
@@ -158,7 +239,10 @@ const getPipelineSummary = async (req, res) => {
 const convertLead = async (req, res) => {
   try {
     const lead = await Lead.findById(req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
 
     if (lead.convertedClient) {
       return res.status(400).json({ message: "Lead has already been converted" });
@@ -190,20 +274,27 @@ const convertLead = async (req, res) => {
     let project = null;
 
     if (createProject) {
-      project = await Project.create({
+      const projectData = {
         client: client._id,
         title: projectTitle || lead.company || `${lead.name} Project`,
         platform: lead.platform || undefined,
         teamMembers,
-        budget: Number(projectValue ?? lead.estimatedValue ?? 0),
         startDate: new Date(),
         deadline: deadline || undefined,
-        paymentDueDate: paymentDueDate || undefined,
-        paymentTerms,
         status: "Pending",
         notes: lead.notes,
         createdBy: req.user._id,
-      });
+      };
+
+      if (isSuperAdmin(req)) {
+        projectData.budget = Number(
+          projectValue ?? lead.estimatedValue ?? 0
+        );
+        projectData.paymentDueDate = paymentDueDate || undefined;
+        projectData.paymentTerms = paymentTerms;
+      }
+
+      project = await Project.create(projectData);
     }
 
     lead.stage = "Won";
@@ -213,11 +304,21 @@ const convertLead = async (req, res) => {
 
     const populated = await populateLead(Lead.findById(lead._id));
 
+    const responseProject = project
+      ? project.toObject()
+      : null;
+
+    if (responseProject && !isSuperAdmin(req)) {
+      delete responseProject.budget;
+      delete responseProject.paymentDueDate;
+      delete responseProject.paymentTerms;
+    }
+
     res.status(200).json({
       message: "Lead converted successfully",
-      lead: populated,
+      lead: sanitizeLead(populated, req),
       client,
-      project,
+      project: responseProject,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
