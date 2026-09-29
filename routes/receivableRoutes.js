@@ -1,9 +1,9 @@
 const express = require("express");
 const { getReceivables } = require("../controllers/receivableController");
-const { protect, authorizePermission } = require("../middleware/authMiddleware");
+const { protect, authorizeRoles } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-router.get("/", protect, authorizePermission("view_earnings"), getReceivables);
+router.get("/", protect, authorizeRoles("super_admin"), getReceivables);
 
 module.exports = router;
