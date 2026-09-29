@@ -16,7 +16,7 @@ const {
 
 const router = express.Router();
 
-router.get("/", protect, authorizePermission("manage_users"), getUsers);
+router.get("/", protect, authorizePermission("view_users"), getUsers);
 
 
 router.post("/", protect, authorizePermission("manage_users"), createUser);
