@@ -1,5 +1,6 @@
 const Payment = require("../models/Payment");
 const Project = require("../models/Project");
+const Platform = require("../models/Platform");
 
 const populatePayment = (query) =>
   query
@@ -31,9 +32,24 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ message: "Assign a platform to this project before recording a payment" });
     }
 
-    const cleanedAllocations = allocations
+    let cleanedAllocations = allocations
       .filter((item) => item.user && Number(item.amount) > 0)
       .map((item) => ({ user: item.user, amount: Number(item.amount) }));
+
+    if (cleanedAllocations.length === 0) {
+      const platformDoc = await Platform.findById(projectDoc.platform);
+
+      if (platformDoc?.defaultAllocations?.length) {
+        cleanedAllocations = platformDoc.defaultAllocations
+          .filter((item) => item.user && Number(item.percentage) > 0)
+          .map((item) => ({
+            user: item.user,
+            amount: Number(
+              ((Number(amount) * Number(item.percentage)) / 100).toFixed(2)
+            ),
+          }));
+      }
+    }
 
     const allocatedTotal = cleanedAllocations.reduce((sum, item) => sum + item.amount, 0);
     if (allocatedTotal > Number(amount) + 0.01) {
