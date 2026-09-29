@@ -1,6 +1,7 @@
 const Client = require("../models/Client");
 const Project = require("../models/Project");
 const Payment = require("../models/Payment");
+const Task = require("../models/Task");
 
 const getDashboardStats = async (req, res) => {
   try {
@@ -14,6 +15,10 @@ const getDashboardStats = async (req, res) => {
       completedProjects,
       projectValueData,
       revenueData,
+      openTasks,
+      completedTasks,
+      recentProjects,
+      recentPayments,
     ] = await Promise.all([
       Client.countDocuments(),
       Client.countDocuments({ status: "Active" }),
@@ -28,6 +33,20 @@ const getDashboardStats = async (req, res) => {
       Payment.aggregate([
         { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
       ]),
+      Task.countDocuments({ status: { $ne: "Completed" } }),
+      Task.countDocuments({ status: "Completed" }),
+      Project.find()
+        .populate("client", "name company")
+        .populate("platform", "name")
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select("title status budget client platform createdAt"),
+      Payment.find()
+        .populate("client", "name company")
+        .populate("project", "title")
+        .sort({ paymentDate: -1, createdAt: -1 })
+        .limit(5)
+        .select("amount paymentDate client project paymentMode"),
     ]);
 
     const totalProjectValue = projectValueData[0]?.totalProjectValue || 0;
@@ -45,6 +64,10 @@ const getDashboardStats = async (req, res) => {
       totalProjectValue,
       totalRevenue,
       totalOutstanding,
+      openTasks,
+      completedTasks,
+      recentProjects,
+      recentPayments,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
