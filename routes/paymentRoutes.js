@@ -6,14 +6,14 @@ const {
   getProjectPaymentSummary,
   deletePayment,
 } = require("../controllers/paymentController");
-const { protect, authorizePermission } = require("../middleware/authMiddleware");
+const { protect, authorizeRoles } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-router.get("/", protect, authorizePermission("view_earnings"), getPayments);
-router.get("/summary", protect, authorizePermission("view_earnings"), getEarningsSummary);
-router.get("/project/:projectId/summary", protect, authorizePermission("view_earnings"), getProjectPaymentSummary);
-router.post("/", protect, authorizePermission("manage_payments"), createPayment);
-router.delete("/:id", protect, authorizePermission("manage_payments"), deletePayment);
+router.get("/", protect, authorizeRoles("super_admin"), getPayments);
+router.get("/summary", protect, authorizeRoles("super_admin"), getEarningsSummary);
+router.get("/project/:projectId/summary", protect, authorizeRoles("super_admin"), getProjectPaymentSummary);
+router.post("/", protect, authorizeRoles("super_admin"), createPayment);
+router.delete("/:id", protect, authorizeRoles("super_admin"), deletePayment);
 
 module.exports = router;
