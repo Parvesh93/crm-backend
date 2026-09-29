@@ -187,6 +187,44 @@ const getEarningsSummary = async (req, res) => {
   }
 };
 
+
+const getProjectPaymentSummary = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const totals = await Payment.aggregate([
+      { $match: { project: project._id } },
+      {
+        $group: {
+          _id: null,
+          received: { $sum: "$amount" },
+          paymentCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const received = totals[0]?.received || 0;
+    const projectValue = Number(project.budget || 0);
+    const outstanding = Math.max(0, projectValue - received);
+
+    res.status(200).json({
+      projectId: project._id,
+      projectValue,
+      received,
+      outstanding,
+      paymentCount: totals[0]?.paymentCount || 0,
+      collectionPercent:
+        projectValue > 0 ? Math.min(100, (received / projectValue) * 100) : 0,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const deletePayment = async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.id);
@@ -203,5 +241,6 @@ module.exports = {
   createPayment,
   getPayments,
   getEarningsSummary,
+  getProjectPaymentSummary,
   deletePayment,
 };
