@@ -32,6 +32,8 @@ const projectSchema = new mongoose.Schema(
     budget: { type: Number, default: 0 },
     startDate: { type: Date },
     deadline: { type: Date },
+    paymentDueDate: { type: Date },
+    paymentTerms: { type: String, trim: true },
 
     status: {
       type: String,
