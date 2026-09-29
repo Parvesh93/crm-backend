@@ -12,6 +12,7 @@ const getDashboardStats = async (req, res) => {
       totalProjects,
       activeProjects,
       completedProjects,
+      projectValueData,
       revenueData,
     ] = await Promise.all([
       Client.countDocuments(),
@@ -21,17 +22,17 @@ const getDashboardStats = async (req, res) => {
       Project.countDocuments(),
       Project.countDocuments({ status: "In Progress" }),
       Project.countDocuments({ status: "Completed" }),
+      Project.aggregate([
+        { $group: { _id: null, totalProjectValue: { $sum: "$budget" } } },
+      ]),
       Payment.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalRevenue: { $sum: "$amount" },
-          },
-        },
+        { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
       ]),
     ]);
 
-    const totalRevenue = revenueData.length > 0 ? revenueData[0].totalRevenue : 0;
+    const totalProjectValue = projectValueData[0]?.totalProjectValue || 0;
+    const totalRevenue = revenueData[0]?.totalRevenue || 0;
+    const totalOutstanding = Math.max(0, totalProjectValue - totalRevenue);
 
     res.status(200).json({
       totalClients,
@@ -41,7 +42,9 @@ const getDashboardStats = async (req, res) => {
       totalProjects,
       activeProjects,
       completedProjects,
+      totalProjectValue,
       totalRevenue,
+      totalOutstanding,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
