@@ -186,6 +186,72 @@ const notifyTaskAssignee = async ({
   });
 };
 
+const notifyBulkTaskAssignment = async ({
+  assignee,
+  tasks,
+  actor,
+  projectTitle,
+}) => {
+  if (!assignee || !tasks?.length) return;
+
+  if (
+    actor?._id &&
+    String(actor._id) === String(assignee._id)
+  ) {
+    return;
+  }
+
+  const actorName = actor?.name || "A team member";
+  const tasksUrl = `${getFrontendUrl()}/tasks`;
+  const taskList = tasks
+    .slice(0, 10)
+    .map((task, index) => `${index + 1}. ${task.title}`)
+    .join("\n");
+
+  const moreCount = Math.max(0, tasks.length - 10);
+  const detail = `${tasks.length} tasks assigned${projectTitle ? ` for ${projectTitle}` : ""}. ${moreCount ? `+${moreCount} more tasks.` : ""}`;
+
+  const emailHtml = `
+    <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6">
+      <h2 style="margin-bottom:8px">PPDT CRM Task Assignment</h2>
+      <p><strong>${tasks.length} tasks were assigned to you</strong></p>
+      <p><strong>By:</strong> ${actorName}</p>
+      ${projectTitle ? `<p><strong>Project:</strong> ${projectTitle}</p>` : ""}
+      <div style="white-space:pre-line;background:#f8fafc;padding:12px;border-radius:8px">${taskList}</div>
+      <p style="margin-top:24px">
+        <a href="${tasksUrl}" style="background:#111827;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;display:inline-block">
+          Open Tasks
+        </a>
+      </p>
+    </div>
+  `;
+
+  const results = await Promise.allSettled([
+    sendEmail({
+      to: assignee.email,
+      subject: `PPDT CRM: ${tasks.length} tasks assigned to you`,
+      html: emailHtml,
+    }),
+    sendWhatsAppTemplate({
+      to: assignee.phone,
+      eventLabel: "Tasks assigned",
+      taskTitle: `${tasks.length} tasks`,
+      detail: `${actorName}: ${detail}`,
+      taskUrl: tasksUrl,
+    }),
+  ]);
+
+  results.forEach((result) => {
+    if (result.status === "rejected") {
+      console.error(
+        "Bulk notification error:",
+        result.reason?.message || result.reason
+      );
+    }
+  });
+};
+
 module.exports = {
   notifyTaskAssignee,
+  notifyBulkTaskAssignment,
 };
