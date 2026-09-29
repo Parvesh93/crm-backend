@@ -13,6 +13,8 @@ const rolePermissions = {
     "delete_tasks",
     "generate_ai",
     "view_dashboard",
+    "view_platforms",
+    "manage_platforms",
   ],
 
   admin: [
@@ -29,6 +31,8 @@ const rolePermissions = {
     "delete_tasks",
     "generate_ai",
     "view_dashboard",
+    "view_platforms",
+    "manage_platforms",
   ],
 
   manager: [
@@ -41,6 +45,7 @@ const rolePermissions = {
     "update_task_status",
     "generate_ai",
     "view_dashboard",
+    "view_platforms",
   ],
 
   developer: [
@@ -48,6 +53,7 @@ const rolePermissions = {
     "view_tasks",
     "update_task_status",
     "view_dashboard",
+    "view_platforms",
   ],
 
   client: [
