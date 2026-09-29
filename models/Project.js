@@ -8,30 +8,30 @@ const projectSchema = new mongoose.Schema(
       required: true,
     },
 
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    title: { type: String, required: true, trim: true },
 
+    // Legacy field retained for existing records
     type: {
       type: String,
       enum: ["Shopify", "WordPress", "WooCommerce", "Laravel", "Maintenance", "Other"],
       default: "Other",
     },
 
-    budget: {
-      type: Number,
-      default: 0,
+    platform: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Platform",
     },
 
-    startDate: {
-      type: Date,
-    },
+    teamMembers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
-    deadline: {
-      type: Date,
-    },
+    budget: { type: Number, default: 0 },
+    startDate: { type: Date },
+    deadline: { type: Date },
 
     status: {
       type: String,
@@ -39,9 +39,7 @@ const projectSchema = new mongoose.Schema(
       default: "Pending",
     },
 
-    notes: {
-      type: String,
-    },
+    notes: { type: String },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -49,9 +47,7 @@ const projectSchema = new mongoose.Schema(
       required: true,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Project", projectSchema);
