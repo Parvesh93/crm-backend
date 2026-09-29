@@ -41,9 +41,19 @@ const validateAllocations = (allocations = []) => {
 const getPlatforms = async (req, res) => {
   try {
     await ensureDefaults();
-    const platforms = await Platform.find({ isActive: true })
-      .populate("defaultAllocations.user", "name email designation role")
-      .sort({ name: 1 });
+
+    let query = Platform.find({ isActive: true }).sort({ name: 1 });
+
+    if (req.user?.role === "super_admin") {
+      query = query.populate(
+        "defaultAllocations.user",
+        "name email designation role"
+      );
+    } else {
+      query = query.select("-defaultAllocations");
+    }
+
+    const platforms = await query;
 
     res.status(200).json({ count: platforms.length, platforms });
   } catch (error) {
@@ -54,6 +64,7 @@ const getPlatforms = async (req, res) => {
 const createPlatform = async (req, res) => {
   try {
     const { name, slug, description, isActive, defaultAllocations } = req.body;
+    const isSuperAdmin = req.user?.role === "super_admin";
     if (!name) return res.status(400).json({ message: "Platform name is required" });
 
     const finalSlug = (slug || name)
@@ -67,11 +78,19 @@ const createPlatform = async (req, res) => {
       slug: finalSlug,
       description,
       isActive,
-      defaultAllocations: validateAllocations(defaultAllocations),
+      defaultAllocations: isSuperAdmin ? validateAllocations(defaultAllocations) : [],
     });
 
-    const populated = await Platform.findById(platform._id)
-      .populate("defaultAllocations.user", "name email designation role");
+    let populated = Platform.findById(platform._id);
+    if (isSuperAdmin) {
+      populated = populated.populate(
+        "defaultAllocations.user",
+        "name email designation role"
+      );
+    } else {
+      populated = populated.select("-defaultAllocations");
+    }
+    populated = await populated;
 
     res.status(201).json({ message: "Platform created successfully", platform: populated });
   } catch (error) {
@@ -82,15 +101,33 @@ const createPlatform = async (req, res) => {
 const updatePlatform = async (req, res) => {
   try {
     const update = { ...req.body };
+    const isSuperAdmin = req.user?.role === "super_admin";
 
     if (Object.prototype.hasOwnProperty.call(update, "defaultAllocations")) {
-      update.defaultAllocations = validateAllocations(update.defaultAllocations);
+      if (!isSuperAdmin) {
+        delete update.defaultAllocations;
+      } else {
+        update.defaultAllocations = validateAllocations(
+          update.defaultAllocations
+        );
+      }
     }
 
-    const platform = await Platform.findByIdAndUpdate(req.params.id, update, {
+    let query = Platform.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
-    }).populate("defaultAllocations.user", "name email designation role");
+    });
+
+    if (isSuperAdmin) {
+      query = query.populate(
+        "defaultAllocations.user",
+        "name email designation role"
+      );
+    } else {
+      query = query.select("-defaultAllocations");
+    }
+
+    const platform = await query;
 
     if (!platform) return res.status(404).json({ message: "Platform not found" });
 
