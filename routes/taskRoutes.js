@@ -11,6 +11,11 @@ const {
 } = require("../controllers/taskController");
 
 const {
+  getTaskComments,
+  addTaskComment,
+} = require("../controllers/taskCommentController");
+
+const {
   protect,
   authorizeRoles,
   authorizePermission,
@@ -24,6 +29,20 @@ router.post("/bulk", protect, authorizePermission("manage_tasks"), createTasksBu
 router.get("/", protect, authorizePermission("view_tasks"), getTasks);
 
 router.get("/project/:projectId", protect, authorizePermission("view_tasks"), getTasksByProject);
+
+router.get(
+  "/:taskId/comments",
+  protect,
+  authorizePermission("view_tasks"),
+  getTaskComments
+);
+
+router.post(
+  "/:taskId/comments",
+  protect,
+  authorizePermission("view_tasks"),
+  addTaskComment
+);
 
 router.get("/:id", protect, getTaskById);
 
