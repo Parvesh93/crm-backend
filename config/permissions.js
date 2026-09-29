@@ -18,6 +18,8 @@ const rolePermissions = {
     "manage_platforms",
     "view_earnings",
     "manage_payments",
+    "view_leads",
+    "manage_leads",
   ],
 
   admin: [
@@ -39,6 +41,8 @@ const rolePermissions = {
     "manage_platforms",
     "view_earnings",
     "manage_payments",
+    "view_leads",
+    "manage_leads",
   ],
 
   manager: [
@@ -54,6 +58,8 @@ const rolePermissions = {
     "view_dashboard",
     "view_platforms",
     "view_earnings",
+    "view_leads",
+    "manage_leads",
   ],
 
   developer: [
