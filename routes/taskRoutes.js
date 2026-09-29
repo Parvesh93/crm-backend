@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   createTask,
+  createTasksBulk,
   getTasks,
   getTaskById,
   getTasksByProject,
@@ -18,6 +19,7 @@ const {
 const router = express.Router();
 
 router.post("/", protect, authorizePermission("manage_tasks"), createTask);
+router.post("/bulk", protect, authorizePermission("manage_tasks"), createTasksBulk);
 
 router.get("/", protect, authorizePermission("view_tasks"), getTasks);
 
