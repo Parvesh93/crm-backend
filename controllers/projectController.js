@@ -1,6 +1,28 @@
 const Project = require("../models/Project");
 const Client = require("../models/Client");
 
+const isSuperAdmin = (req) => req.user?.role === "super_admin";
+
+const sanitizeProject = (project, req) => {
+  if (!project) return project;
+
+  const data =
+    typeof project.toObject === "function"
+      ? project.toObject()
+      : { ...project };
+
+  if (!isSuperAdmin(req)) {
+    delete data.budget;
+    delete data.paymentDueDate;
+    delete data.paymentTerms;
+  }
+
+  return data;
+};
+
+const sanitizeProjects = (projects, req) =>
+  projects.map((project) => sanitizeProject(project, req));
+
 const createProject = async (req, res) => {
   try {
     const {
@@ -23,23 +45,30 @@ const createProject = async (req, res) => {
     }
 
     const clientExists = await Client.findById(client);
-    if (!clientExists) return res.status(404).json({ message: "Client not found" });
+    if (!clientExists) {
+      return res.status(404).json({ message: "Client not found" });
+    }
 
-    const project = await Project.create({
+    const projectData = {
       client,
       title,
       type,
       platform: platform || undefined,
       teamMembers: teamMembers || [],
-      budget,
       startDate,
       deadline,
-      paymentDueDate,
-      paymentTerms,
       status,
       notes,
       createdBy: req.user._id,
-    });
+    };
+
+    if (isSuperAdmin(req)) {
+      projectData.budget = Number(budget || 0);
+      projectData.paymentDueDate = paymentDueDate || undefined;
+      projectData.paymentTerms = paymentTerms;
+    }
+
+    const project = await Project.create(projectData);
 
     const populatedProject = await Project.findById(project._id)
       .populate("client", "name company email")
@@ -47,7 +76,10 @@ const createProject = async (req, res) => {
       .populate("teamMembers", "name email role designation")
       .populate("createdBy", "name email role");
 
-    res.status(201).json({ message: "Project created successfully", project: populatedProject });
+    res.status(201).json({
+      message: "Project created successfully",
+      project: sanitizeProject(populatedProject, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -66,7 +98,10 @@ const getProjects = async (req, res) => {
       .populate("createdBy", "name email role")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ count: projects.length, projects });
+    res.status(200).json({
+      count: projects.length,
+      projects: sanitizeProjects(projects, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -80,9 +115,13 @@ const getProjectById = async (req, res) => {
       .populate("teamMembers", "name email role designation")
       .populate("createdBy", "name email role");
 
-    if (!project) return res.status(404).json({ message: "Project not found" });
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
 
-    res.status(200).json({ project });
+    res.status(200).json({
+      project: sanitizeProject(project, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -95,7 +134,10 @@ const getProjectsByClient = async (req, res) => {
       .populate("teamMembers", "name email role designation")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ count: projects.length, projects });
+    res.status(200).json({
+      count: projects.length,
+      projects: sanitizeProjects(projects, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -103,18 +145,35 @@ const getProjectsByClient = async (req, res) => {
 
 const updateProject = async (req, res) => {
   try {
-    const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    })
+    const update = { ...req.body };
+
+    if (!isSuperAdmin(req)) {
+      delete update.budget;
+      delete update.paymentDueDate;
+      delete update.paymentTerms;
+    }
+
+    const updatedProject = await Project.findByIdAndUpdate(
+      req.params.id,
+      update,
+      {
+        new: true,
+        runValidators: true,
+      }
+    )
       .populate("client", "name company email")
       .populate("platform", "name slug")
       .populate("teamMembers", "name email role designation")
       .populate("createdBy", "name email role");
 
-    if (!updatedProject) return res.status(404).json({ message: "Project not found" });
+    if (!updatedProject) {
+      return res.status(404).json({ message: "Project not found" });
+    }
 
-    res.status(200).json({ message: "Project updated successfully", project: updatedProject });
+    res.status(200).json({
+      message: "Project updated successfully",
+      project: sanitizeProject(updatedProject, req),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -123,7 +182,9 @@ const updateProject = async (req, res) => {
 const deleteProject = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ message: "Project not found" });
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
 
     await project.deleteOne();
     res.status(200).json({ message: "Project deleted successfully" });
