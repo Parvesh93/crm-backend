@@ -1,5 +1,63 @@
 const Task = require("../models/Task");
 const Project = require("../models/Project");
+const User = require("../models/User");
+const {
+  notifyTaskAssignee,
+  notifyBulkTaskAssignment,
+} = require("../services/notificationService");
+
+const getAssignee = async (userId) => {
+  if (!userId) return null;
+  return User.findById(userId).select("name email phone");
+};
+
+const formatDate = (value) => {
+  if (!value) return "Not set";
+  return new Date(value).toLocaleDateString("en-IN");
+};
+
+const buildUpdateDetail = (before, update) => {
+  const changes = [];
+
+  if (
+    Object.prototype.hasOwnProperty.call(update, "status") &&
+    update.status !== before.status
+  ) {
+    changes.push(`Status: ${before.status} -> ${update.status}`);
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(update, "priority") &&
+    update.priority !== before.priority
+  ) {
+    changes.push(`Priority: ${before.priority} -> ${update.priority}`);
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(update, "dueDate") &&
+    String(update.dueDate || "") !== String(before.dueDate || "")
+  ) {
+    changes.push(
+      `Due date: ${formatDate(before.dueDate)} -> ${formatDate(update.dueDate)}`
+    );
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(update, "title") &&
+    update.title !== before.title
+  ) {
+    changes.push("Task title was updated");
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(update, "description") &&
+    update.description !== before.description
+  ) {
+    changes.push("Task description was updated");
+  }
+
+  return changes.join(" | ") || "Task details were updated.";
+};
 
 // CREATE TASK
 const createTask = async (req, res) => {
@@ -39,17 +97,33 @@ const createTask = async (req, res) => {
       createdBy: req.user._id,
     });
 
+    const populatedTask = await Task.findById(task._id)
+      .populate("project", "title")
+      .populate("assignedTo", "name email phone")
+      .populate("createdBy", "name");
+
     res.status(201).json({
       message: "Task created successfully",
-      task,
+      task: populatedTask,
     });
+
+    if (populatedTask.assignedTo) {
+      notifyTaskAssignee({
+        assignee: populatedTask.assignedTo,
+        task: populatedTask,
+        actor: req.user,
+        eventLabel: "Task assigned to you",
+        detail: `Project: ${projectExists.title || "Project"}${dueDate ? ` | Due: ${formatDate(dueDate)}` : ""}`,
+      }).catch((error) => {
+        console.error("Assignment notification error:", error.message);
+      });
+    }
   } catch (error) {
     res.status(500).json({
       message: error.message,
     });
   }
 };
-
 
 const createTasksBulk = async (req, res) => {
   try {
@@ -118,6 +192,19 @@ const createTasksBulk = async (req, res) => {
       count: createdTasks.length,
       tasks: createdTasks,
     });
+
+    if (assignedTo) {
+      const assignee = await getAssignee(assignedTo);
+
+      notifyBulkTaskAssignment({
+        assignee,
+        tasks: createdTasks,
+        actor: req.user,
+        projectTitle: projectExists.title,
+      }).catch((error) => {
+        console.error("Bulk assignment notification error:", error.message);
+      });
+    }
   } catch (error) {
     res.status(500).json({
       message: error.message,
@@ -129,17 +216,17 @@ const createTasksBulk = async (req, res) => {
 const getTasks = async (req, res) => {
   try {
     const tasks = await Task.find()
-  .populate({
-    path: "project",
-    select: "title client",
-    populate: {
-      path: "client",
-      select: "name company",
-    },
-  })
-  .populate("assignedTo", "name email")
-  .populate("createdBy", "name")
-  .sort({ createdAt: -1 });
+      .populate({
+        path: "project",
+        select: "title client",
+        populate: {
+          path: "client",
+          select: "name company",
+        },
+      })
+      .populate("assignedTo", "name email phone")
+      .populate("createdBy", "name")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       count: tasks.length,
@@ -157,7 +244,7 @@ const getTaskById = async (req, res) => {
   try {
     const task = await Task.findById(req.params.id)
       .populate("project", "title")
-      .populate("assignedTo", "name email")
+      .populate("assignedTo", "name email phone")
       .populate("createdBy", "name");
 
     if (!task) {
@@ -181,7 +268,10 @@ const getTasksByProject = async (req, res) => {
   try {
     const tasks = await Task.find({
       project: req.params.projectId,
-    }).sort({ createdAt: -1 });
+    })
+      .populate("assignedTo", "name email phone")
+      .populate("createdBy", "name")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       count: tasks.length,
@@ -205,19 +295,60 @@ const updateTask = async (req, res) => {
       });
     }
 
+    const oldAssigneeId = task.assignedTo
+      ? String(task.assignedTo)
+      : null;
+
+    const update = { ...req.body };
+
     const updatedTask = await Task.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      update,
       {
         new: true,
         runValidators: true,
       }
-    );
+    )
+      .populate("project", "title")
+      .populate("assignedTo", "name email phone")
+      .populate("createdBy", "name");
 
     res.status(200).json({
       message: "Task updated successfully",
       task: updatedTask,
     });
+
+    const newAssigneeId = updatedTask.assignedTo?._id
+      ? String(updatedTask.assignedTo._id)
+      : null;
+
+    if (newAssigneeId && newAssigneeId !== oldAssigneeId) {
+      notifyTaskAssignee({
+        assignee: updatedTask.assignedTo,
+        task: updatedTask,
+        actor: req.user,
+        eventLabel: "Task assigned to you",
+        detail: `Project: ${updatedTask.project?.title || "Project"}${updatedTask.dueDate ? ` | Due: ${formatDate(updatedTask.dueDate)}` : ""}`,
+      }).catch((error) => {
+        console.error("Reassignment notification error:", error.message);
+      });
+
+      return;
+    }
+
+    if (updatedTask.assignedTo) {
+      const detail = buildUpdateDetail(task, update);
+
+      notifyTaskAssignee({
+        assignee: updatedTask.assignedTo,
+        task: updatedTask,
+        actor: req.user,
+        eventLabel: "Task updated",
+        detail,
+      }).catch((error) => {
+        console.error("Task update notification error:", error.message);
+      });
+    }
   } catch (error) {
     res.status(500).json({
       message: error.message,
