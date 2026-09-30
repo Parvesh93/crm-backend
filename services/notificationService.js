@@ -31,6 +31,8 @@ const sendEmail = async ({ to, subject, html }) => {
     return { skipped: true, reason: "SMTP not configured" };
   }
 
+  await transporter.verify();
+
   await transporter.sendMail({
     from:
       process.env.SMTP_FROM ||
@@ -180,9 +182,22 @@ const notifyTaskAssignee = async ({
     }),
   ]);
 
-  results.forEach((result) => {
+  results.forEach((result, index) => {
+    const channel = index === 0 ? "email" : "whatsapp";
+
     if (result.status === "rejected") {
-      console.error("Notification error:", result.reason?.message || result.reason);
+      console.error(
+        `Notification ${channel} error:`,
+        result.reason?.message || result.reason
+      );
+      return;
+    }
+
+    if (result.value?.skipped) {
+      console.warn(
+        `Notification ${channel} skipped:`,
+        result.value.reason
+      );
     }
   });
 };
@@ -242,17 +257,59 @@ const notifyBulkTaskAssignment = async ({
     }),
   ]);
 
-  results.forEach((result) => {
+  results.forEach((result, index) => {
+    const channel = index === 0 ? "email" : "whatsapp";
+
     if (result.status === "rejected") {
       console.error(
-        "Bulk notification error:",
+        `Bulk notification ${channel} error:`,
         result.reason?.message || result.reason
+      );
+      return;
+    }
+
+    if (result.value?.skipped) {
+      console.warn(
+        `Bulk notification ${channel} skipped:`,
+        result.value.reason
       );
     }
   });
 };
 
+const testEmailConnection = async ({ to }) => {
+  const transporter = createTransporter();
+
+  if (!transporter) {
+    throw new Error(
+      "SMTP is not configured. Check SMTP_HOST, SMTP_USER and SMTP_PASS."
+    );
+  }
+
+  await transporter.verify();
+
+  const info = await transporter.sendMail({
+    from:
+      process.env.SMTP_FROM ||
+      `PPDT CRM <${process.env.SMTP_USER}>`,
+    to,
+    subject: "PPDT CRM - SMTP Test",
+    html: `
+      <div style="font-family:Arial,sans-serif;color:#111827">
+        <h2>PPDT CRM Email Test</h2>
+        <p>Your SMTP configuration is working successfully.</p>
+      </div>
+    `,
+  });
+
+  return {
+    messageId: info.messageId,
+    response: info.response,
+  };
+};
+
 module.exports = {
   notifyTaskAssignee,
   notifyBulkTaskAssignment,
+  testEmailConnection,
 };
