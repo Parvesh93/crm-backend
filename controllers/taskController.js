@@ -1,6 +1,7 @@
 const Task = require("../models/Task");
 const Project = require("../models/Project");
 const User = require("../models/User");
+const TaskComment = require("../models/TaskComment");
 const {
   notifyTaskAssignee,
   notifyBulkTaskAssignment,
@@ -228,9 +229,11 @@ const getTasks = async (req, res) => {
       .populate("createdBy", "name")
       .sort({ createdAt: -1 });
 
+    const validTasks = tasks.filter((task) => task.project);
+
     res.status(200).json({
-      count: tasks.length,
-      tasks,
+      count: validTasks.length,
+      tasks: validTasks,
     });
   } catch (error) {
     res.status(500).json({
@@ -356,6 +359,54 @@ const updateTask = async (req, res) => {
   }
 };
 
+const cleanupOrphanTasks = async (req, res) => {
+  try {
+    const tasks = await Task.find().select("_id project");
+    const projectIds = [
+      ...new Set(
+        tasks
+          .map((task) => task.project && String(task.project))
+          .filter(Boolean)
+      ),
+    ];
+
+    const existingProjects = await Project.find({
+      _id: { $in: projectIds },
+    }).select("_id");
+
+    const existingProjectIds = new Set(
+      existingProjects.map((project) => String(project._id))
+    );
+
+    const orphanTaskIds = tasks
+      .filter(
+        (task) =>
+          !task.project ||
+          !existingProjectIds.has(String(task.project))
+      )
+      .map((task) => task._id);
+
+    if (orphanTaskIds.length > 0) {
+      await TaskComment.deleteMany({
+        task: { $in: orphanTaskIds },
+      });
+
+      await Task.deleteMany({
+        _id: { $in: orphanTaskIds },
+      });
+    }
+
+    res.status(200).json({
+      message: "Orphan task cleanup completed",
+      deletedTasks: orphanTaskIds.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
 // DELETE TASK
 const deleteTask = async (req, res) => {
   try {
@@ -367,10 +418,11 @@ const deleteTask = async (req, res) => {
       });
     }
 
+    await TaskComment.deleteMany({ task: task._id });
     await task.deleteOne();
 
     res.status(200).json({
-      message: "Task deleted successfully",
+      message: "Task and comments deleted successfully",
     });
   } catch (error) {
     res.status(500).json({
@@ -386,5 +438,6 @@ module.exports = {
   getTaskById,
   getTasksByProject,
   updateTask,
+  cleanupOrphanTasks,
   deleteTask,
 };
