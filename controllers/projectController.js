@@ -1,5 +1,7 @@
 const Project = require("../models/Project");
 const Client = require("../models/Client");
+const Task = require("../models/Task");
+const TaskComment = require("../models/TaskComment");
 
 const isSuperAdmin = (req) => req.user?.role === "super_admin";
 
@@ -186,8 +188,25 @@ const deleteProject = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
 
+    const tasks = await Task.find({ project: project._id }).select("_id");
+    const taskIds = tasks.map((task) => task._id);
+
+    if (taskIds.length > 0) {
+      await TaskComment.deleteMany({
+        task: { $in: taskIds },
+      });
+
+      await Task.deleteMany({
+        _id: { $in: taskIds },
+      });
+    }
+
     await project.deleteOne();
-    res.status(200).json({ message: "Project deleted successfully" });
+
+    res.status(200).json({
+      message: "Project and associated tasks deleted successfully",
+      deletedTasks: taskIds.length,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
