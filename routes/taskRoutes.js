@@ -7,6 +7,7 @@ const {
   getTaskById,
   getTasksByProject,
   updateTask,
+  cleanupOrphanTasks,
   deleteTask,
 } = require("../controllers/taskController");
 
@@ -27,6 +28,7 @@ router.post("/", protect, authorizePermission("manage_tasks"), createTask);
 router.post("/bulk", protect, authorizePermission("manage_tasks"), createTasksBulk);
 
 router.get("/", protect, authorizePermission("view_tasks"), getTasks);
+router.delete("/cleanup/orphans", protect, authorizeRoles("super_admin"), cleanupOrphanTasks);
 
 router.get("/project/:projectId", protect, authorizePermission("view_tasks"), getTasksByProject);
 
