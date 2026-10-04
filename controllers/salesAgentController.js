@@ -1,5 +1,5 @@
 const SalesAgentRun = require("../models/SalesAgentRun");
-const { getConfig, runSalesAgent } = require("../services/salesAgentService");
+const { getConfig, importSheetLeads } = require("../services/salesAgentService");
 
 const getStatus = async (req, res) => {
   try {
@@ -17,16 +17,19 @@ const getStatus = async (req, res) => {
     res.status(200).json({
       config: {
         enabled: config.enabled,
-        provider: config.provider,
         markets: config.markets,
-        services: config.services,
-        minScore: config.minScore,
-        resultsPerQuery: config.resultsPerQuery,
-        maxQueriesPerRun: config.maxQueriesPerRun,
         dailyHour: config.dailyHour,
         timezone: config.timezone,
-        searchConfigured: Boolean(process.env.SERPER_API_KEY),
-        aiConfigured: Boolean(process.env.OPENAI_API_KEY),
+        maxRowsPerRun: config.maxRowsPerRun,
+        spreadsheetId: config.spreadsheetId,
+        sheetName: config.sheetName,
+        sourceStatus: config.sourceStatus,
+        importedStatus: config.importedStatus,
+        duplicateStatus: config.duplicateStatus,
+        sheetsConfigured: Boolean(
+          process.env.GOOGLE_SHEETS_CLIENT_EMAIL &&
+          process.env.GOOGLE_SHEETS_PRIVATE_KEY
+        ),
       },
       latest,
       recentRuns,
@@ -51,11 +54,11 @@ const runNow = async (req, res) => {
       message: "Sales Agent run started",
     });
 
-    runSalesAgent({
+    importSheetLeads({
       userId: req.user._id,
       trigger: "manual",
     }).catch((error) => {
-      console.error("Sales Agent run failed:", error.message);
+      console.error("Sales Agent sheet import failed:", error.message);
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
