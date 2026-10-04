@@ -3,7 +3,13 @@ const Lead = require("../models/Lead");
 const Platform = require("../models/Platform");
 const SalesAgentRun = require("../models/SalesAgentRun");
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+};
 
 const splitEnv = (value, fallback) =>
   String(value || fallback)
@@ -185,9 +191,7 @@ const parseJsonObject = (text) => {
 };
 
 const qualifyCandidate = async ({ candidate, market, service }) => {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
+  const openai = getOpenAI();
 
   const prompt = [
     "You qualify B2B prospects for PP DESIGN AND TECH, a web development agency.",
