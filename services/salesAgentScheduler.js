@@ -1,6 +1,6 @@
 const User = require("../models/User");
 const SalesAgentRun = require("../models/SalesAgentRun");
-const { getConfig, runSalesAgent } = require("./salesAgentService");
+const { getConfig, importSheetLeads } = require("./salesAgentService");
 
 let timer = null;
 
@@ -75,12 +75,12 @@ const checkScheduledRun = async () => {
       return;
     }
 
-    runSalesAgent({
+    importSheetLeads({
       userId: superAdmin._id,
       trigger: "scheduled",
     }).catch((error) => {
       console.error(
-        "Scheduled Sales Agent run failed:",
+        "Scheduled Sales Agent sheet import failed:",
         error.message
       );
     });
