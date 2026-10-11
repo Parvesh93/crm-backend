@@ -26,6 +26,8 @@ const getConfig = () => ({
     Math.max(Number(process.env.OUTREACH_DELAY_SECONDS || 45), 0),
     300
   ),
+  followUpsEnabled:
+    String(process.env.OUTREACH_FOLLOWUPS_ENABLED || "false") === "true",
 });
 
 const getOpenAI = () => {
@@ -200,16 +202,29 @@ const addDays = (date, days) => {
   return copy;
 };
 
-const eligibleQuery = (now) => ({
+const eligibleQuery = (now, followUpsEnabled) => ({
   email: { $exists: true, $nin: ["", null] },
-  stage: { $in: ["New Lead", "Follow-up", "Contacted"] },
   convertedClient: null,
+  source: "Email Outreach",
   $and: [
     {
       $or: [
-        { "outreach.status": { $in: ["ready", "active"] } },
-        { "outreach.status": { $exists: false } },
-        { outreach: { $exists: false } },
+        {
+          stage: "New Lead",
+          $or: [
+            { "outreach.status": "ready" },
+            { "outreach.status": { $exists: false } },
+            { outreach: { $exists: false } },
+          ],
+        },
+        ...(followUpsEnabled
+          ? [
+              {
+                stage: { $in: ["Contacted", "Follow-up"] },
+                "outreach.status": "active",
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -260,7 +275,9 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
     }
 
     const now = new Date();
-    const leads = await Lead.find(eligibleQuery(now))
+    const leads = await Lead.find(
+      eligibleQuery(now, config.followUpsEnabled)
+    )
       .populate("platform", "name")
       .sort({
         "outreach.nextSendAt": 1,
