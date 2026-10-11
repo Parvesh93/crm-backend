@@ -2,6 +2,8 @@ const express = require("express");
 const {
   getOutreachStatus,
   runOutreachNow,
+  previewLeadEmail,
+  previewUpcomingEmails,
   unsubscribeLead,
 } = require("../controllers/outreachController");
 const {
@@ -23,6 +25,20 @@ router.post(
   protect,
   authorizeRoles("super_admin"),
   runOutreachNow
+);
+
+router.get(
+  "/preview/upcoming",
+  protect,
+  authorizeRoles("super_admin"),
+  previewUpcomingEmails
+);
+
+router.get(
+  "/preview/:leadId",
+  protect,
+  authorizeRoles("super_admin"),
+  previewLeadEmail
 );
 
 router.get("/unsubscribe/:token", unsubscribeLead);
