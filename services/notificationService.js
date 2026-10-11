@@ -23,7 +23,7 @@ const createTransporter = () => {
   });
 };
 
-const sendEmail = async ({ to, subject, html }) => {
+const sendEmail = async ({ to, subject, html, text, replyTo }) => {
   if (!to) return { skipped: true, reason: "No email" };
 
   const transporter = createTransporter();
@@ -33,16 +33,22 @@ const sendEmail = async ({ to, subject, html }) => {
 
   await transporter.verify();
 
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from:
       process.env.SMTP_FROM ||
       `PPDT CRM <${process.env.SMTP_USER}>`,
     to,
     subject,
     html,
+    text,
+    replyTo: replyTo || undefined,
   });
 
-  return { sent: true };
+  return {
+    sent: true,
+    messageId: info.messageId,
+    response: info.response,
+  };
 };
 
 const normalizePhone = (phone) => {
@@ -312,4 +318,5 @@ module.exports = {
   notifyTaskAssignee,
   notifyBulkTaskAssignment,
   testEmailConnection,
+  sendEmail,
 };
