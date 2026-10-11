@@ -22,6 +22,10 @@ const getConfig = () => ({
     "Parvesh",
   publicBaseUrl:
     (process.env.CRM_API_PUBLIC_URL || "").replace(/\/$/, ""),
+  delaySeconds: Math.min(
+    Math.max(Number(process.env.OUTREACH_DELAY_SECONDS || 45), 0),
+    300
+  ),
 });
 
 const getOpenAI = () => {
@@ -200,11 +204,21 @@ const eligibleQuery = (now) => ({
   email: { $exists: true, $nin: ["", null] },
   stage: { $in: ["New Lead", "Follow-up", "Contacted"] },
   convertedClient: null,
-  "outreach.status": { $in: ["ready", "active"] },
-  $or: [
-    { "outreach.nextSendAt": { $exists: false } },
-    { "outreach.nextSendAt": null },
-    { "outreach.nextSendAt": { $lte: now } },
+  $and: [
+    {
+      $or: [
+        { "outreach.status": { $in: ["ready", "active"] } },
+        { "outreach.status": { $exists: false } },
+        { outreach: { $exists: false } },
+      ],
+    },
+    {
+      $or: [
+        { "outreach.nextSendAt": { $exists: false } },
+        { "outreach.nextSendAt": null },
+        { "outreach.nextSendAt": { $lte: now } },
+      ],
+    },
   ],
 });
 
@@ -256,7 +270,9 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
 
     run.candidates = leads.length;
 
-    for (const lead of leads) {
+    for (let index = 0; index < leads.length; index += 1) {
+      const lead = leads[index];
+
       try {
         if (
           !lead.email ||
@@ -341,10 +357,19 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
 
         lead.lastContactedAt = sentAt;
         lead.nextFollowUp = lead.outreach.nextSendAt;
-        lead.stage = gapDays ? "Follow-up" : "Contacted";
+        lead.stage = currentStep === 0 ? "Contacted" : "Follow-up";
 
         await lead.save();
         run.sent += 1;
+
+        if (
+          config.delaySeconds > 0 &&
+          index < leads.length - 1
+        ) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, config.delaySeconds * 1000)
+          );
+        }
       } catch (error) {
         run.failed += 1;
         run.errors.push(
