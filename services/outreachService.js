@@ -176,6 +176,10 @@ const generateFollowUp = async (lead, step, config) => {
 };
 
 const ensureUnsubscribeToken = async (lead) => {
+  if (!lead.outreach) {
+    lead.outreach = {};
+  }
+
   if (lead.outreach?.unsubscribeToken) {
     return lead.outreach.unsubscribeToken;
   }
@@ -264,6 +268,12 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
   });
 
   try {
+    if (!config.publicBaseUrl) {
+      throw new Error(
+        "CRM_API_PUBLIC_URL is required before outreach can send, so every email has a working unsubscribe link."
+      );
+    }
+
     const alreadySent = await countSentToday(config.timezone);
     const remaining = Math.max(0, config.dailyLimit - alreadySent);
 
@@ -291,6 +301,10 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
       const lead = leads[index];
 
       try {
+        if (!lead.outreach) {
+          lead.outreach = {};
+        }
+
         if (
           !lead.email ||
           lead.stage === "Won" ||
