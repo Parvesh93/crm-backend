@@ -222,8 +222,13 @@ const addDays = (date, days) => {
 const eligibleQuery = (now, followUpsEnabled) => ({
   email: { $exists: true, $nin: ["", null] },
   convertedClient: null,
-  source: "Email Outreach",
   $and: [
+    {
+      $or: [
+        { source: "Email Outreach" },
+        { notes: /Imported from PPDT High Ticket Lead Pipeline/i },
+      ],
+    },
     {
       $or: [
         {
@@ -253,6 +258,83 @@ const eligibleQuery = (now, followUpsEnabled) => ({
     },
   ],
 });
+
+const getOutreachDiagnostics = async () => {
+  const now = new Date();
+  const config = getConfig();
+
+  const [
+    totalLeads,
+    withEmail,
+    importedOrOutreach,
+    newLeads,
+    contactedOrFollowUp,
+    missingDraft,
+    eligible,
+  ] = await Promise.all([
+    Lead.countDocuments({}),
+    Lead.countDocuments({
+      email: { $exists: true, $nin: ["", null] },
+    }),
+    Lead.countDocuments({
+      $or: [
+        { source: "Email Outreach" },
+        { notes: /Imported from PPDT High Ticket Lead Pipeline/i },
+      ],
+    }),
+    Lead.countDocuments({
+      stage: "New Lead",
+      email: { $exists: true, $nin: ["", null] },
+      $or: [
+        { source: "Email Outreach" },
+        { notes: /Imported from PPDT High Ticket Lead Pipeline/i },
+      ],
+    }),
+    Lead.countDocuments({
+      stage: { $in: ["Contacted", "Follow-up"] },
+      email: { $exists: true, $nin: ["", null] },
+      $or: [
+        { source: "Email Outreach" },
+        { notes: /Imported from PPDT High Ticket Lead Pipeline/i },
+      ],
+    }),
+    Lead.countDocuments({
+      email: { $exists: true, $nin: ["", null] },
+      stage: "New Lead",
+      $and: [
+        {
+          $or: [
+            { source: "Email Outreach" },
+            { notes: /Imported from PPDT High Ticket Lead Pipeline/i },
+          ],
+        },
+        {
+          $or: [
+            { "outreach.initialDraft": { $exists: false } },
+            { "outreach.initialDraft": "" },
+            { outreach: { $exists: false } },
+          ],
+        },
+        {
+          notes: { $not: /Personalized Email Draft:/i },
+        },
+      ],
+    }),
+    Lead.countDocuments(
+      eligibleQuery(now, config.followUpsEnabled)
+    ),
+  ]);
+
+  return {
+    totalLeads,
+    withEmail,
+    importedOrOutreach,
+    newLeads,
+    contactedOrFollowUp,
+    missingDraft,
+    eligible,
+  };
+};
 
 const countSentToday = async (timezone) => {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -538,4 +620,5 @@ module.exports = {
   unsubscribeByToken,
   getLeadPreview,
   getUpcomingPreviews,
+  getOutreachDiagnostics,
 };
