@@ -20,6 +20,16 @@ const getConfig = () => ({
   signatureName:
     process.env.OUTREACH_SIGNATURE_NAME ||
     "Parvesh",
+  contactEmail:
+    process.env.OUTREACH_CONTACT_EMAIL ||
+    process.env.OUTREACH_REPLY_TO ||
+    process.env.SMTP_USER ||
+    "",
+  website:
+    process.env.OUTREACH_WEBSITE ||
+    "https://ppdesigntech.com",
+  phone:
+    process.env.OUTREACH_PHONE || "",
   publicBaseUrl:
     (process.env.CRM_API_PUBLIC_URL || "").replace(/\/$/, ""),
   delaySeconds: Math.min(
@@ -66,6 +76,68 @@ const extractDraftFromNotes = (notes) => {
   return after.slice(0, end).trim();
 };
 
+const parseImportedDraft = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return { subject: "", body: "" };
+
+  const lines = raw.split(/\r?\n/);
+  let subject = "";
+
+  if (/^subject\s*:/i.test(lines[0] || "")) {
+    subject = lines.shift().replace(/^subject\s*:\s*/i, "").trim();
+  }
+
+  let body = lines.join("\n").trim();
+
+  body = body
+    .replace(
+      /\n{1,3}(regards|best regards|kind regards|thanks|thank you),?\s*\n(?:pp design and tech|parvesh)?\s*$/i,
+      ""
+    )
+    .trim();
+
+  return { subject, body };
+};
+
+const getStoredDraft = (lead) => {
+  const stored =
+    String(lead.outreach?.initialDraft || "").trim() ||
+    extractDraftFromNotes(lead.notes);
+
+  return parseImportedDraft(stored);
+};
+
+const buildSignature = (config) => {
+  const lines = [
+    "Regards,",
+    config.signatureName,
+    config.companyName,
+  ];
+
+  if (config.contactEmail) {
+    lines.push("Email: " + config.contactEmail);
+  }
+
+  if (config.phone) {
+    lines.push("Phone: " + config.phone);
+  }
+
+  if (config.website) {
+    lines.push("Website: " + config.website);
+  }
+
+  return lines.join("\n");
+};
+
+const appendSignature = (body, config) => {
+  const clean = String(body || "").trim();
+  const signature = buildSignature(config);
+
+  if (!clean) return signature;
+
+  return clean + "\n\n" + signature;
+};
+
 const subjectForLead = (lead) => {
   const company = lead.company || "your team";
   const platform = lead.platform?.name || "";
@@ -81,55 +153,115 @@ const subjectForLead = (lead) => {
   return "A development idea for " + company;
 };
 
-const generateInitialDraft = async (lead, config) => {
-  const stored =
-    String(lead.outreach?.initialDraft || "").trim() ||
-    extractDraftFromNotes(lead.notes);
-
-  if (stored) return stored;
-
+const generateInitialEmail = async (lead, config) => {
+  const imported = getStoredDraft(lead);
   const openai = getOpenAI();
 
-  if (!openai) {
-    return [
-      "Hi " + (lead.name && lead.name !== "Company Team" ? lead.name : "there") + ",",
+  if (openai) {
+    const prompt = [
+      "Create a personalized B2B website-development proposal email for PP DESIGN AND TECH.",
       "",
-      "I came across " + (lead.company || "your company") + " and thought there may be an opportunity to improve the website or ecommerce experience.",
+      "Goal:",
+      "- This is not a generic cold email.",
+      "- It should read like a concise mini-proposal for improving or developing the prospect's website/ecommerce/custom web experience.",
+      "- Use only facts present in the supplied CRM research and imported draft.",
+      "- Never invent traffic, revenue, technology, problems, or business facts.",
+      "- Mention the prospect's website/company context naturally.",
+      "- Explain 2-3 concrete things PP DESIGN AND TECH could build, redesign, integrate, or improve.",
+      "- Connect those improvements to a practical business outcome such as better enquiries, product discovery, conversion, operations, customer experience, or scalability only when supported by the research.",
+      "- Keep the tone professional, consultative and personalized.",
+      "- Avoid exaggerated claims and spammy phrases.",
+      "- Do not mention pricing in this first email.",
+      "- End by asking whether they would be open to a short discussion or a tailored scope.",
+      "- Keep the main body around 140-190 words.",
+      "- Do NOT include a signature; the CRM adds the official signature automatically.",
       "",
-      "We work on Shopify, custom web development, React/Next.js and ecommerce improvements at " + config.companyName + ".",
+      "Prospect:",
+      "Contact: " + (lead.name || ""),
+      "Company: " + (lead.company || ""),
+      "Website: " + (lead.website || ""),
+      "Service/platform: " + (lead.platform?.name || ""),
       "",
-      "Would you be open to a short conversation if this is relevant?",
+      "Imported research draft:",
+      imported.body || "(none)",
+      "Imported subject suggestion: " + (imported.subject || "(none)"),
       "",
-      "Regards,",
-      config.signatureName,
+      "CRM research notes:",
+      String(lead.notes || "").slice(0, 3500),
+      "",
+      'Return ONLY valid JSON: {"subject":"...","body":"..."}',
+      "The subject should be specific and natural, preferably tied to the opportunity rather than saying only 'development idea'.",
     ].join("\n");
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OUTREACH_AI_MODEL || "gpt-4.1-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.35,
+    });
+
+    const raw = String(completion.choices[0].message.content || "")
+      .replace(/^\s*```json/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+
+    try {
+      const parsed = JSON.parse(raw);
+      const subject =
+        String(parsed.subject || "").trim() ||
+        imported.subject ||
+        subjectForLead(lead);
+
+      const body = appendSignature(
+        String(parsed.body || "").trim(),
+        config
+      );
+
+      return {
+        subject,
+        body,
+        source: imported.body
+          ? "AI proposal personalized from imported research"
+          : "AI proposal personalized from CRM research",
+      };
+    } catch {
+      // Fall through to deterministic formatting.
+    }
   }
 
-  const prompt = [
-    "Write a concise B2B cold email for PP DESIGN AND TECH.",
-    "Do not invent facts.",
-    "Do not sound spammy.",
-    "Keep it under 130 words.",
-    "Use the researched notes only when they support a factual observation.",
-    "End with a low-friction question, not a hard sell.",
-    "",
-    "Lead name: " + (lead.name || ""),
-    "Company: " + (lead.company || ""),
-    "Website: " + (lead.website || ""),
-    "Service/platform: " + (lead.platform?.name || ""),
-    "Research notes:",
-    String(lead.notes || "").slice(0, 2500),
-    "",
-    "Return only the email body, no subject line.",
-  ].join("\n");
+  const subject =
+    imported.subject || subjectForLead(lead);
 
-  const completion = await openai.chat.completions.create({
-    model: process.env.OUTREACH_AI_MODEL || "gpt-4.1-mini",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.4,
-  });
+  const contactName =
+    lead.name && lead.name !== "Company Team"
+      ? lead.name
+      : "there";
 
-  return String(completion.choices[0].message.content || "").trim();
+  const fallbackBody = imported.body
+    ? imported.body +
+      "\n\nBased on this, PP DESIGN AND TECH can help turn the opportunity into a focused website-development scope covering the required UX, development and integrations. We can first share a concise proposed structure and recommended implementation approach for your review.\n\nWould you be open to a short discussion so we can prepare a tailored scope for " +
+      (lead.company || "your team") +
+      "?"
+    : [
+        "Hi " + contactName + ",",
+        "",
+        "I came across " +
+          (lead.company || "your company") +
+          (lead.website ? " and reviewed " + lead.website + "." : "."),
+        "",
+        "Based on what we found, PP DESIGN AND TECH would be interested in proposing a focused website-development engagement for your team. We work across Shopify, custom development, React/Next.js and WordPress/WooCommerce, depending on the business requirement.",
+        "",
+        "We can prepare a tailored scope covering the recommended website structure, required functionality, integrations and implementation approach.",
+        "",
+        "Would you be open to a short discussion so we can share a more specific proposal?",
+      ].join("\n");
+
+  return {
+    subject,
+    body: appendSignature(fallbackBody, config),
+    source: imported.body
+      ? "Imported personalized draft enhanced as proposal"
+      : "Personalized proposal fallback",
+  };
 };
 
 const generateFollowUp = async (lead, step, config) => {
@@ -147,8 +279,7 @@ const generateFollowUp = async (lead, step, config) => {
       "",
       templates[Math.max(0, Math.min(step - 1, templates.length - 1))],
       "",
-      "Regards,",
-      config.signatureName,
+      buildSignature(config),
     ].join("\n");
   }
 
@@ -172,7 +303,10 @@ const generateFollowUp = async (lead, step, config) => {
     temperature: 0.4,
   });
 
-  return String(completion.choices[0].message.content || "").trim();
+  return appendSignature(
+    String(completion.choices[0].message.content || "").trim(),
+    config
+  );
 };
 
 const ensureUnsubscribeToken = async (lead) => {
@@ -268,14 +402,19 @@ const buildPreview = async (lead) => {
   }
 
   const currentStep = Number(lead.outreach?.sequenceStep || 0);
+  const initialEmail =
+    currentStep === 0
+      ? await generateInitialEmail(lead, config)
+      : null;
+
   const body =
     currentStep === 0
-      ? await generateInitialDraft(lead, config)
+      ? initialEmail.body
       : await generateFollowUp(lead, currentStep, config);
 
   const subject =
     currentStep === 0
-      ? subjectForLead(lead)
+      ? initialEmail.subject
       : "Re: " + (lead.outreach?.lastSubject || subjectForLead(lead));
 
   return {
@@ -289,12 +428,9 @@ const buildPreview = async (lead) => {
     subject,
     body,
     source:
-      String(lead.outreach?.initialDraft || "").trim() ||
-      extractDraftFromNotes(lead.notes)
-        ? "Imported personalized draft"
-        : process.env.OPENAI_API_KEY
-        ? "AI personalized from CRM research"
-        : "Fallback template",
+      currentStep === 0
+        ? initialEmail.source
+        : "Personalized follow-up",
   };
 };
 
@@ -397,9 +533,14 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
           continue;
         }
 
+        const initialEmail =
+          currentStep === 0
+            ? await generateInitialEmail(lead, config)
+            : null;
+
         const body =
           currentStep === 0
-            ? await generateInitialDraft(lead, config)
+            ? initialEmail.body
             : await generateFollowUp(lead, currentStep, config);
 
         if (!body) {
@@ -416,7 +557,7 @@ const runOutreach = async ({ trigger = "scheduled" } = {}) => {
 
         const subject =
           currentStep === 0
-            ? subjectForLead(lead)
+            ? initialEmail.subject
             : "Re: " + (lead.outreach?.lastSubject || subjectForLead(lead));
 
         const footer = unsubscribeUrl
