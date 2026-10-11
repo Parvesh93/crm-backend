@@ -42,17 +42,68 @@ const base64Url = (input) =>
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
 
-const getGoogleAccessToken = async () => {
-  const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
-  const rawPrivateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY;
+const normalizePrivateKey = () => {
+  const base64Key = String(
+    process.env.GOOGLE_SHEETS_PRIVATE_KEY_BASE64 || ""
+  ).trim();
 
-  if (!clientEmail || !rawPrivateKey) {
+  if (base64Key) {
+    const decoded = Buffer.from(base64Key, "base64").toString("utf8");
+
+    if (
+      decoded.includes("-----BEGIN PRIVATE KEY-----") &&
+      decoded.includes("-----END PRIVATE KEY-----")
+    ) {
+      return decoded.trim() + "\n";
+    }
+
     throw new Error(
-      "Google Sheets service account is not configured. Add GOOGLE_SHEETS_CLIENT_EMAIL and GOOGLE_SHEETS_PRIVATE_KEY."
+      "GOOGLE_SHEETS_PRIVATE_KEY_BASE64 does not decode to a valid PEM private key."
     );
   }
 
-  const privateKey = rawPrivateKey.replace(/\\n/g, "\n");
+  let raw = String(
+    process.env.GOOGLE_SHEETS_PRIVATE_KEY || ""
+  ).trim();
+
+  if (!raw) return "";
+
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    raw = raw.slice(1, -1);
+  }
+
+  raw = raw
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .trim();
+
+  if (
+    !raw.includes("-----BEGIN PRIVATE KEY-----") ||
+    !raw.includes("-----END PRIVATE KEY-----")
+  ) {
+    throw new Error(
+      "Google Sheets private key is malformed. Use the full service-account private_key or GOOGLE_SHEETS_PRIVATE_KEY_BASE64."
+    );
+  }
+
+  return raw + "\n";
+};
+
+const getGoogleAccessToken = async () => {
+  const clientEmail = String(
+    process.env.GOOGLE_SHEETS_CLIENT_EMAIL || ""
+  ).trim();
+  const privateKey = normalizePrivateKey();
+
+  if (!clientEmail || !privateKey) {
+    throw new Error(
+      "Google Sheets service account is not configured. Add GOOGLE_SHEETS_CLIENT_EMAIL and GOOGLE_SHEETS_PRIVATE_KEY (or GOOGLE_SHEETS_PRIVATE_KEY_BASE64)."
+    );
+  }
   const now = Math.floor(Date.now() / 1000);
 
   const header = base64Url(
@@ -71,9 +122,20 @@ const getGoogleAccessToken = async () => {
 
   const unsigned = header + "." + claim;
 
-  const signature = crypto
-    .sign("RSA-SHA256", Buffer.from(unsigned), privateKey)
-    .toString("base64")
+  let signature;
+
+  try {
+    signature = crypto
+      .sign("RSA-SHA256", Buffer.from(unsigned), privateKey)
+      .toString("base64");
+  } catch (error) {
+    throw new Error(
+      "Google Sheets private key could not be decoded. Re-save the service-account key in Hostinger or use GOOGLE_SHEETS_PRIVATE_KEY_BASE64. Original error: " +
+        error.message
+    );
+  }
+
+  signature = signature
     .replace(/=/g, "")
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
