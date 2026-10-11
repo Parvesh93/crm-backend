@@ -5,6 +5,7 @@ const {
   unsubscribeByToken,
   getLeadPreview,
   getUpcomingPreviews,
+  getOutreachDiagnostics,
 } = require("../services/outreachService");
 
 const getOutreachStatus = async (req, res) => {
@@ -13,6 +14,8 @@ const getOutreachStatus = async (req, res) => {
     const recentRuns = await OutreachRun.find()
       .sort({ createdAt: -1 })
       .limit(20);
+
+    const diagnostics = await getOutreachDiagnostics();
 
     res.status(200).json({
       config: {
@@ -31,6 +34,7 @@ const getOutreachStatus = async (req, res) => {
         ),
       },
       recentRuns,
+      diagnostics,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
