@@ -3,6 +3,8 @@ const {
   getConfig,
   runOutreach,
   unsubscribeByToken,
+  getLeadPreview,
+  getUpcomingPreviews,
 } = require("../services/outreachService");
 
 const getOutreachStatus = async (req, res) => {
@@ -59,6 +61,29 @@ const runOutreachNow = async (req, res) => {
   }
 };
 
+const previewLeadEmail = async (req, res) => {
+  try {
+    const preview = await getLeadPreview(req.params.leadId);
+    res.status(200).json({ preview });
+  } catch (error) {
+    res.status(error.message === "Lead not found" ? 404 : 500).json({
+      message: error.message,
+    });
+  }
+};
+
+const previewUpcomingEmails = async (req, res) => {
+  try {
+    const previews = await getUpcomingPreviews(req.query.limit || 10);
+    res.status(200).json({
+      count: previews.length,
+      previews,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const unsubscribeLead = async (req, res) => {
   try {
     const lead = await unsubscribeByToken(req.params.token);
@@ -82,5 +107,7 @@ const unsubscribeLead = async (req, res) => {
 module.exports = {
   getOutreachStatus,
   runOutreachNow,
+  previewLeadEmail,
+  previewUpcomingEmails,
   unsubscribeLead,
 };
