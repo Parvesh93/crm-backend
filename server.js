@@ -4,6 +4,7 @@ const cors = require("cors");
 
 const connectDB = require("./config/db");
 const { startSalesAgentScheduler } = require("./services/salesAgentScheduler");
+const { startOutreachScheduler } = require("./services/outreachScheduler");
 
 dotenv.config();
 connectDB();
@@ -30,10 +31,12 @@ app.use("/api/receivables", require("./routes/receivableRoutes"));
 app.use("/api/leads", require("./routes/leadRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/sales-agent", require("./routes/salesAgentRoutes"));
+app.use("/api/outreach", require("./routes/outreachRoutes"));
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   startSalesAgentScheduler();
+  startOutreachScheduler();
 });
