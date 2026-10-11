@@ -520,6 +520,12 @@ const importSheetLeads = async ({
           row["estimated project value"]
         ),
         notes: buildNotes(row, index + 1),
+        outreach: {
+          status: email ? "ready" : "paused",
+          initialDraft: String(
+            row["personalized email draft"] || ""
+          ).trim(),
+        },
         createdBy: userId,
       });
 
