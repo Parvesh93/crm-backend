@@ -1,5 +1,4 @@
 const crypto = require("crypto");
-const OpenAI = require("openai");
 const Lead = require("../models/Lead");
 const OutreachRun = require("../models/OutreachRun");
 const { sendEmail } = require("./notificationService");
@@ -39,11 +38,6 @@ const getConfig = () => ({
   followUpsEnabled:
     String(process.env.OUTREACH_FOLLOWUPS_ENABLED || "false") === "true",
 });
-
-const getOpenAI = () => {
-  if (!process.env.OPENAI_API_KEY) return null;
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-};
 
 const escapeHtml = (value) =>
   String(value || "")
@@ -155,158 +149,43 @@ const subjectForLead = (lead) => {
 
 const generateInitialEmail = async (lead, config) => {
   const imported = getStoredDraft(lead);
-  const openai = getOpenAI();
 
-  if (openai) {
-    const prompt = [
-      "Create a personalized B2B website-development proposal email for PP DESIGN AND TECH.",
-      "",
-      "Goal:",
-      "- This is not a generic cold email.",
-      "- It should read like a concise mini-proposal for improving or developing the prospect's website/ecommerce/custom web experience.",
-      "- Use only facts present in the supplied CRM research and imported draft.",
-      "- Never invent traffic, revenue, technology, problems, or business facts.",
-      "- Mention the prospect's website/company context naturally.",
-      "- Explain 2-3 concrete things PP DESIGN AND TECH could build, redesign, integrate, or improve.",
-      "- Connect those improvements to a practical business outcome such as better enquiries, product discovery, conversion, operations, customer experience, or scalability only when supported by the research.",
-      "- Keep the tone professional, consultative and personalized.",
-      "- Avoid exaggerated claims and spammy phrases.",
-      "- Do not mention pricing in this first email.",
-      "- End by asking whether they would be open to a short discussion or a tailored scope.",
-      "- Keep the main body around 140-190 words.",
-      "- Do NOT include a signature; the CRM adds the official signature automatically.",
-      "",
-      "Prospect:",
-      "Contact: " + (lead.name || ""),
-      "Company: " + (lead.company || ""),
-      "Website: " + (lead.website || ""),
-      "Service/platform: " + (lead.platform?.name || ""),
-      "",
-      "Imported research draft:",
-      imported.body || "(none)",
-      "Imported subject suggestion: " + (imported.subject || "(none)"),
-      "",
-      "CRM research notes:",
-      String(lead.notes || "").slice(0, 3500),
-      "",
-      'Return ONLY valid JSON: {"subject":"...","body":"..."}',
-      "The subject should be specific and natural, preferably tied to the opportunity rather than saying only 'development idea'.",
-    ].join("\n");
-
-    const completion = await openai.chat.completions.create({
-      model: process.env.OUTREACH_AI_MODEL || "gpt-4.1-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.35,
-    });
-
-    const raw = String(completion.choices[0].message.content || "")
-      .replace(/^\s*```json/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-
-    try {
-      const parsed = JSON.parse(raw);
-      const subject =
-        String(parsed.subject || "").trim() ||
-        imported.subject ||
-        subjectForLead(lead);
-
-      const body = appendSignature(
-        String(parsed.body || "").trim(),
-        config
-      );
-
-      return {
-        subject,
-        body,
-        source: imported.body
-          ? "AI proposal personalized from imported research"
-          : "AI proposal personalized from CRM research",
-      };
-    } catch {
-      // Fall through to deterministic formatting.
-    }
+  if (!imported.body) {
+    throw new Error(
+      "Personalized Email Draft is missing for this lead. Add the draft in the lead spreadsheet and sync again."
+    );
   }
 
   const subject =
     imported.subject || subjectForLead(lead);
 
-  const contactName =
-    lead.name && lead.name !== "Company Team"
-      ? lead.name
-      : "there";
-
-  const fallbackBody = imported.body
-    ? imported.body +
-      "\n\nBased on this, PP DESIGN AND TECH can help turn the opportunity into a focused website-development scope covering the required UX, development and integrations. We can first share a concise proposed structure and recommended implementation approach for your review.\n\nWould you be open to a short discussion so we can prepare a tailored scope for " +
-      (lead.company || "your team") +
-      "?"
-    : [
-        "Hi " + contactName + ",",
-        "",
-        "I came across " +
-          (lead.company || "your company") +
-          (lead.website ? " and reviewed " + lead.website + "." : "."),
-        "",
-        "Based on what we found, PP DESIGN AND TECH would be interested in proposing a focused website-development engagement for your team. We work across Shopify, custom development, React/Next.js and WordPress/WooCommerce, depending on the business requirement.",
-        "",
-        "We can prepare a tailored scope covering the recommended website structure, required functionality, integrations and implementation approach.",
-        "",
-        "Would you be open to a short discussion so we can share a more specific proposal?",
-      ].join("\n");
-
   return {
     subject,
-    body: appendSignature(fallbackBody, config),
-    source: imported.body
-      ? "Imported personalized draft enhanced as proposal"
-      : "Personalized proposal fallback",
+    body: appendSignature(imported.body, config),
+    source: "Personalized draft from Google Sheet",
   };
 };
 
 const generateFollowUp = async (lead, step, config) => {
-  const openai = getOpenAI();
+  const templates = [
+    "Just following up on my earlier note in case it got buried. Would it be useful if I shared a concise website-development scope for " +
+      (lead.company || "your team") +
+      "?",
+    "Wanted to check once more whether website, ecommerce or custom development is something your team is considering right now. Happy to share a focused scope if helpful.",
+    "I’ll close the loop after this. If website, Shopify or custom development becomes a priority later, I’d be happy to reconnect.",
+  ];
 
-  if (!openai) {
-    const templates = [
-      "Just following up on my earlier note in case it got buried. Would it be useful if I shared a couple of specific ideas for " + (lead.company || "your website") + "?",
-      "Wanted to check once more whether website or ecommerce development is something your team is considering right now. Happy to keep it brief.",
-      "I’ll close the loop after this. If website, Shopify or custom development becomes a priority later, I’d be happy to reconnect.",
-    ];
-
-    return [
-      "Hi " + (lead.name && lead.name !== "Company Team" ? lead.name : "there") + ",",
-      "",
-      templates[Math.max(0, Math.min(step - 1, templates.length - 1))],
-      "",
-      buildSignature(config),
-    ].join("\n");
-  }
-
-  const prompt = [
-    "Write follow-up #" + step + " for a B2B web-development outreach email.",
-    "Company: " + (lead.company || ""),
-    "Recipient: " + (lead.name || ""),
-    "Keep it under 80 words.",
-    "Do not invent facts.",
-    "Do not repeat the original email verbatim.",
-    "Be polite and low-pressure.",
-    step >= 3
-      ? "This is the final follow-up. Clearly close the loop."
-      : "Ask one simple question.",
-    "Return only the email body.",
+  return [
+    "Hi " +
+      (lead.name && lead.name !== "Company Team"
+        ? lead.name
+        : "there") +
+      ",",
+    "",
+    templates[Math.max(0, Math.min(step - 1, templates.length - 1))],
+    "",
+    buildSignature(config),
   ].join("\n");
-
-  const completion = await openai.chat.completions.create({
-    model: process.env.OUTREACH_AI_MODEL || "gpt-4.1-mini",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.4,
-  });
-
-  return appendSignature(
-    String(completion.choices[0].message.content || "").trim(),
-    config
-  );
 };
 
 const ensureUnsubscribeToken = async (lead) => {
