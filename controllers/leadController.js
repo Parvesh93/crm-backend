@@ -176,6 +176,50 @@ const deleteLead = async (req, res) => {
   }
 };
 
+const bulkDeleteLeads = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids)
+      ? [...new Set(req.body.ids.map((id) => String(id).trim()).filter(Boolean))]
+      : [];
+
+    if (!ids.length) {
+      return res.status(400).json({
+        message: "Please select at least one lead",
+      });
+    }
+
+    if (ids.length > 500) {
+      return res.status(400).json({
+        message: "You can delete up to 500 leads at one time",
+      });
+    }
+
+    const convertedCount = await Lead.countDocuments({
+      _id: { $in: ids },
+      convertedClient: { $ne: null },
+    });
+
+    if (convertedCount > 0) {
+      return res.status(400).json({
+        message:
+          "Converted leads cannot be bulk deleted. Remove converted leads from the selection first.",
+      });
+    }
+
+    const result = await Lead.deleteMany({
+      _id: { $in: ids },
+      convertedClient: null,
+    });
+
+    res.status(200).json({
+      message: `${result.deletedCount} lead(s) deleted successfully`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const getPipelineSummary = async (req, res) => {
   try {
     if (!isSuperAdmin(req)) {
@@ -331,6 +375,7 @@ module.exports = {
   getLeadById,
   updateLead,
   deleteLead,
+  bulkDeleteLeads,
   getPipelineSummary,
   convertLead,
 };
