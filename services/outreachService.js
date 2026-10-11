@@ -260,6 +260,77 @@ const countSentToday = async (timezone) => {
   }).length;
 };
 
+const buildPreview = async (lead) => {
+  const config = getConfig();
+
+  if (!lead.outreach) {
+    lead.outreach = {};
+  }
+
+  const currentStep = Number(lead.outreach?.sequenceStep || 0);
+  const body =
+    currentStep === 0
+      ? await generateInitialDraft(lead, config)
+      : await generateFollowUp(lead, currentStep, config);
+
+  const subject =
+    currentStep === 0
+      ? subjectForLead(lead)
+      : "Re: " + (lead.outreach?.lastSubject || subjectForLead(lead));
+
+  return {
+    leadId: lead._id,
+    name: lead.name,
+    company: lead.company,
+    email: lead.email,
+    website: lead.website,
+    platform: lead.platform?.name || "",
+    step: currentStep,
+    subject,
+    body,
+    source:
+      String(lead.outreach?.initialDraft || "").trim() ||
+      extractDraftFromNotes(lead.notes)
+        ? "Imported personalized draft"
+        : process.env.OPENAI_API_KEY
+        ? "AI personalized from CRM research"
+        : "Fallback template",
+  };
+};
+
+const getLeadPreview = async (leadId) => {
+  const lead = await Lead.findById(leadId).populate("platform", "name");
+
+  if (!lead) {
+    throw new Error("Lead not found");
+  }
+
+  return buildPreview(lead);
+};
+
+const getUpcomingPreviews = async (limit = 10) => {
+  const config = getConfig();
+  const now = new Date();
+
+  const leads = await Lead.find(
+    eligibleQuery(now, config.followUpsEnabled)
+  )
+    .populate("platform", "name")
+    .sort({
+      "outreach.nextSendAt": 1,
+      createdAt: 1,
+    })
+    .limit(Math.min(Math.max(Number(limit) || 10, 1), 25));
+
+  const previews = [];
+
+  for (const lead of leads) {
+    previews.push(await buildPreview(lead));
+  }
+
+  return previews;
+};
+
 const runOutreach = async ({ trigger = "scheduled" } = {}) => {
   const config = getConfig();
   const run = await OutreachRun.create({
@@ -445,4 +516,6 @@ module.exports = {
   getConfig,
   runOutreach,
   unsubscribeByToken,
+  getLeadPreview,
+  getUpcomingPreviews,
 };
