@@ -53,6 +53,25 @@ const leadSchema = new mongoose.Schema(
     lastContactedAt: { type: Date },
     notes: { type: String, trim: true },
 
+    outreach: {
+      status: {
+        type: String,
+        enum: ["ready", "active", "paused", "replied", "unsubscribed", "bounced", "completed"],
+        default: "ready",
+      },
+      initialDraft: { type: String, trim: true },
+      sequenceStep: { type: Number, default: 0, min: 0 },
+      emailCount: { type: Number, default: 0, min: 0 },
+      nextSendAt: { type: Date },
+      lastSentAt: { type: Date },
+      lastSubject: { type: String, trim: true },
+      lastMessageId: { type: String, trim: true },
+      unsubscribeToken: { type: String, trim: true },
+      repliedAt: { type: Date },
+      unsubscribedAt: { type: Date },
+      bouncedAt: { type: Date },
+    },
+
     convertedClient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
@@ -74,5 +93,6 @@ const leadSchema = new mongoose.Schema(
 
 leadSchema.index({ stage: 1, nextFollowUp: 1 });
 leadSchema.index({ owner: 1, stage: 1 });
+leadSchema.index({ "outreach.status": 1, "outreach.nextSendAt": 1, stage: 1 });
 
 module.exports = mongoose.model("Lead", leadSchema);
