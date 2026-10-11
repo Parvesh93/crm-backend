@@ -20,6 +20,8 @@ const getOutreachStatus = async (req, res) => {
         endHour: config.endHour,
         timezone: config.timezone,
         replyTo: config.replyTo,
+        followUpsEnabled: config.followUpsEnabled,
+        unsubscribeConfigured: Boolean(config.publicBaseUrl),
         smtpConfigured: Boolean(
           process.env.SMTP_HOST &&
           process.env.SMTP_USER &&
